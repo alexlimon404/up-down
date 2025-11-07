@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Up-Down - Управление файлами пользователей</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            margin-top: 30px;
+        }
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .badge-custom {
+            font-size: 0.85rem;
+            padding: 0.35em 0.65em;
+        }
+        .pagination {
+            margin-top: 20px;
+        }
+        .file-link {
+            font-size: 0.85rem;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        .stats-card {
+            margin-bottom: 20px;
+        }
+        .download-control {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .progress {
+            height: 25px;
+        }
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sortable-header:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col">
+                <h1 class="display-5">
+                    <i class="bi bi-file-earmark-arrow-down"></i>
+                    Up-Down - Управление файлами
+                </h1>
+                <p class="lead text-muted">Просмотр статуса скачанных файлов пользователей</p>
+            </div>
+        </div>
+
+        <!-- Панель управления скачиванием -->
+        <div class="download-control">
+            <h4 class="mb-3">
+                <i class="bi bi-cloud-download"></i> Управление скачиванием
+            </h4>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <button id="start-download-btn" class="btn btn-success btn-lg w-100" onclick="startDownload()">
+                        <i class="bi bi-play-fill"></i> Запустить скачивание
+                    </button>
+                </div>
+                <div class="col-md-6">
+                    <button id="stop-download-btn" class="btn btn-danger btn-lg w-100" onclick="stopDownload()" disabled>
+                        <i class="bi bi-stop-fill"></i> Остановить скачивание
+                    </button>
+                </div>
+            </div>
+
+            <!-- Прогресс скачивания -->
+            <div id="download-progress-container" style="display: none;">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            Статус: <span id="download-status" class="badge bg-secondary">idle</span>
+                        </h5>
+                        <div class="progress mb-3">
+                            <div id="download-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div class="row text-center">
+                            <div class="col-md-3">
+                                <small class="text-muted">Обработано</small>
+                                <div><strong id="progress-processed">0</strong> / <span id="progress-total">0</span></div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Успешно</small>
+                                <div><strong id="progress-successful" class="text-success">0</strong></div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Файлов скачано</small>
+                                <div><strong id="progress-files" class="text-primary">0</strong></div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Время</small>
+                                <div><strong id="progress-duration">0s</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика -->
+        <div class="row stats-card mb-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Всего записей</h5>
+                        <p class="display-6" id="total-count">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Текущая страница</h5>
+                        <p class="display-6" id="current-page">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Записей на странице</h5>
+                        <p class="display-6" id="per-page">20</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Всего страниц</h5>
+                        <p class="display-6" id="total-pages">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Таблица -->
+        <div class="table-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Список пользователей</h4>
+                <button class="btn btn-primary" onclick="downloadAll()">
+                    <i class="bi bi-download"></i> Скачать выбранные
+                </button>
+            </div>
+
+            <div id="loading" class="loading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+            </div>
+
+            <div id="table-wrapper" style="display: none;">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>
+                                    <input type="checkbox" id="select-all" onclick="toggleSelectAll()">
+                                </th>
+                                <th class="sortable-header" onclick="toggleSort()">
+                                    User ID <i id="sort-icon" class="bi bi-arrow-down"></i>
+                                </th>
+                                <th>Citizenship ID</th>
+                                <th>Document Files</th>
+                                <th>Status Document</th>
+                                <th>Address Files</th>
+                                <th>Status Address</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- Данные загружаются через JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Пагинация -->
+                <nav aria-label="Pagination">
+                    <ul class="pagination justify-content-center" id="pagination">
+                        <!-- Пагинация генерируется через JavaScript -->
+                    </ul>
+                </nav>
+            </div>
+
+            <div id="error-message" class="alert alert-danger" style="display: none;" role="alert">
+                <!-- Сообщения об ошибках -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

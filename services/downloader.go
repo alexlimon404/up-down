@@ -26,32 +26,34 @@ func NewDownloader(baseDir string) *Downloader {
 	}
 }
 
-// ParseUploadcareURL парсит URL типа https://ucarecdn.com/uuid~count/ или https://ucarecdn.com/uuid/
-func (d *Downloader) ParseUploadcareURL(url string) (uuid string, count int, err error) {
-	// Пытаемся парсить формат с количеством: https://ucarecdn.com/uuid~count/
-	reWithCount := regexp.MustCompile(`https://ucarecdn\.com/([0-9a-f-]+)~(\d+)/?`)
+// ParseUploadcareURL парсит URL типа https://domain.com/uuid~count/ или https://domain.com/uuid/
+func (d *Downloader) ParseUploadcareURL(url string) (baseURL string, uuid string, count int, err error) {
+	// Пытаемся парсить формат с количеством: https://domain.com/uuid~count/
+	reWithCount := regexp.MustCompile(`(https://[^/]+)/([0-9a-f-]+)~(\d+)/?`)
 	matches := reWithCount.FindStringSubmatch(url)
 
-	if len(matches) == 3 {
-		uuid = matches[1]
-		count, err = strconv.Atoi(matches[2])
+	if len(matches) == 4 {
+		baseURL = matches[1]
+		uuid = matches[2]
+		count, err = strconv.Atoi(matches[3])
 		if err != nil {
-			return "", 0, fmt.Errorf("ошибка парсинга количества файлов: %w", err)
+			return "", "", 0, fmt.Errorf("ошибка парсинга количества файлов: %w", err)
 		}
-		return uuid, count, nil
+		return baseURL, uuid, count, nil
 	}
 
-	// Пытаемся парсить формат одиночного файла: https://ucarecdn.com/uuid/
-	reSingle := regexp.MustCompile(`https://ucarecdn\.com/([0-9a-f-]+)/?`)
+	// Пытаемся парсить формат одиночного файла: https://domain.com/uuid/
+	reSingle := regexp.MustCompile(`(https://[^/]+)/([0-9a-f-]+)/?`)
 	matches = reSingle.FindStringSubmatch(url)
 
-	if len(matches) == 2 {
-		uuid = matches[1]
+	if len(matches) == 3 {
+		baseURL = matches[1]
+		uuid = matches[2]
 		count = 1
-		return uuid, count, nil
+		return baseURL, uuid, count, nil
 	}
 
-	return "", 0, fmt.Errorf("неверный формат URL: %s", url)
+	return "", "", 0, fmt.Errorf("неверный формат URL: %s", url)
 }
 
 // DownloadFile скачивает один файл
@@ -109,7 +111,7 @@ func (d *Downloader) DownloadUploadcareFiles(url, destDir, filePrefix string) ([
 	}
 
 	url = strings.TrimSpace(url)
-	uuid, count, err := d.ParseUploadcareURL(url)
+	baseURL, uuid, count, err := d.ParseUploadcareURL(url)
 	if err != nil {
 		return nil, err
 	}
@@ -123,10 +125,10 @@ func (d *Downloader) DownloadUploadcareFiles(url, destDir, filePrefix string) ([
 		var fileURL string
 		if isGroup {
 			// Для группы используем формат nth/i/
-			fileURL = fmt.Sprintf("https://ucarecdn.com/%s~%d/nth/%d/", uuid, count, i)
+			fileURL = fmt.Sprintf("%s/%s~%d/nth/%d/", baseURL, uuid, count, i)
 		} else {
 			// Для одиночного файла используем прямой UUID
-			fileURL = fmt.Sprintf("https://ucarecdn.com/%s", uuid)
+			fileURL = fmt.Sprintf("%s/%s", baseURL, uuid)
 		}
 
 		// Определяем расширение файла (попробуем скачать и определить)

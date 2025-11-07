@@ -292,8 +292,10 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 
 			if hasErrors {
 				atomic.AddInt64(&dm.stats.FailedUsers, 1)
+				log.Printf("[Worker %d] ❌ user_id: %d - скачивание завершено с ошибками", id, user.ID)
 			} else {
 				atomic.AddInt64(&dm.stats.SuccessfulUsers, 1)
+				log.Printf("[Worker %d] ✅ user_id: %d - файлы успешно скачаны (документы: %v, адрес: %v)", id, user.ID, documentSuccess, addressSuccess)
 			}
 		}
 	}

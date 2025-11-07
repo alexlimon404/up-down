@@ -311,21 +311,64 @@ async function downloadAll() {
     }
 
     const users = Array.from(selectedUsers);
-    let message = `Файлы ${users.length} пользователей находятся в:\n\n`;
+    const totalUsers = users.length;
+    let successCount = 0;
+    let failCount = 0;
+    let totalFilesDownloaded = 0;
+    const results = [];
 
-    for (const userId of users) {
+    // Показываем индикатор прогресса
+    const progressMessage = `Скачивание файлов для ${totalUsers} пользователей...\nПожалуйста, подождите.`;
+    console.log(progressMessage);
+
+    for (let i = 0; i < users.length; i++) {
+        const userId = users[i];
         try {
-            const response = await fetch(`/api/download?user_id=${userId}`);
-            if (response.ok) {
+            const response = await fetch(`/api/download/user?user_id=${userId}`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
                 const data = await response.json();
-                message += `User ${userId}: ${data.path}\n`;
+                throw new Error(data.error || 'Ошибка скачивания');
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                successCount++;
+                totalFilesDownloaded += data.files_downloaded || 0;
+                results.push(`✓ User ${userId}: ${data.files_downloaded} файлов скачано`);
+            } else {
+                failCount++;
+                results.push(`✗ User ${userId}: ${data.error || 'Ошибка'}`);
             }
         } catch (error) {
             console.error(`Ошибка для пользователя ${userId}:`, error);
+            failCount++;
+            results.push(`✗ User ${userId}: ${error.message}`);
         }
+
+        // Обновляем прогресс в консоли
+        console.log(`Прогресс: ${i + 1}/${totalUsers}`);
     }
 
+    // Формируем итоговое сообщение
+    let message = `Скачивание завершено!\n\n`;
+    message += `Всего пользователей: ${totalUsers}\n`;
+    message += `Успешно: ${successCount}\n`;
+    message += `Ошибок: ${failCount}\n`;
+    message += `Всего файлов скачано: ${totalFilesDownloaded}\n\n`;
+    message += `Детали:\n${results.join('\n')}`;
+
     alert(message);
+
+    // Снимаем все галочки
+    selectedUsers.clear();
+    document.getElementById('select-all').checked = false;
+
+    // Перезагружаем таблицу для обновления статусов
+    loadUsers(currentPage);
 }
 
 // === Управление скачиванием ===

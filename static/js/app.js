@@ -7,6 +7,9 @@ let sortOrder = 'DESC'; // По умолчанию DESC
 // Загрузка данных при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadUsers(currentPage);
+    loadDownloadStats();
+    // Обновляем статистику каждые 5 секунд
+    setInterval(loadDownloadStats, 5000);
 });
 
 // Переключение сортировки
@@ -288,8 +291,9 @@ async function downloadUserFiles(userId) {
             }
             alert(message);
 
-            // Перезагружаем таблицу для обновления статусов
+            // Перезагружаем таблицу и статистику для обновления статусов
             loadUsers(currentPage);
+            loadDownloadStats();
         } else {
             throw new Error(data.error || 'Не удалось скачать файлы');
         }
@@ -367,8 +371,9 @@ async function downloadAll() {
     selectedUsers.clear();
     document.getElementById('select-all').checked = false;
 
-    // Перезагружаем таблицу для обновления статусов
+    // Перезагружаем таблицу и статистику для обновления статусов
     loadUsers(currentPage);
+    loadDownloadStats();
 }
 
 // === Управление скачиванием ===
@@ -473,10 +478,11 @@ async function updateProgress() {
             document.getElementById('start-download-btn').disabled = false;
             document.getElementById('stop-download-btn').disabled = true;
 
-            // Перезагружаем список пользователей
+            // Перезагружаем список пользователей и статистику
             if (data.status === 'completed') {
                 setTimeout(() => {
                     loadUsers(currentPage);
+                    loadDownloadStats();
                     alert('Скачивание завершено!');
                 }, 1000);
             }
@@ -514,6 +520,25 @@ function formatDuration(seconds) {
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         return hours + 'h ' + minutes + 'm';
+    }
+}
+
+// Загрузить статистику скачивания
+async function loadDownloadStats() {
+    try {
+        const response = await fetch('/api/download/stats');
+        if (!response.ok) {
+            throw new Error('Ошибка загрузки статистики');
+        }
+
+        const data = await response.json();
+
+        document.getElementById('stats-total').textContent = data.total_users || 0;
+        document.getElementById('stats-downloaded').textContent = data.fully_downloaded || 0;
+        document.getElementById('stats-partial').textContent = data.partially_downloaded || 0;
+        document.getElementById('stats-remaining').textContent = data.remaining || 0;
+    } catch (error) {
+        console.error('Ошибка загрузки статистики:', error);
     }
 }
 

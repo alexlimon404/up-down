@@ -364,3 +364,85 @@ func (h *WebHandler) GetProgressHandler(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+// GetDownloadStatsHandler возвращает статистику скачивания
+func (h *WebHandler) GetDownloadStatsHandler(w http.ResponseWriter, r *http.Request) {
+	// Получаем все статусы из второй БД одним запросом
+	userFilesMap, err := h.userFileRepo.GetAllAsMap()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Получаем всех пользователей с файлами из первой БД
+	rows, err := h.db.Query(`
+		SELECT id,
+		       (document_files IS NOT NULL AND document_files != '') as has_doc,
+		       (address_files IS NOT NULL AND address_files != '') as has_addr
+		FROM users
+		WHERE (document_files IS NOT NULL AND document_files != '')
+		   OR (address_files IS NOT NULL AND address_files != '')
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var totalUsersWithFiles int64
+	var fullyDownloaded int64
+	var partiallyDownloaded int64
+	var notDownloaded int64
+
+	// Проходим по каждому пользователю и проверяем его статус
+	for rows.Next() {
+		var userID int64
+		var hasDoc, hasAddr bool
+
+		if err := rows.Scan(&userID, &hasDoc, &hasAddr); err != nil {
+			continue
+		}
+
+		totalUsersWithFiles++
+
+		// Ищем статус в map (уже загружен из БД)
+		userFile, exists := userFilesMap[userID]
+
+		if !exists {
+			// Нет записи в user_files - файлы не скачаны
+			notDownloaded++
+			continue
+		}
+
+		// Проверяем, все ли требуемые файлы скачаны
+		docOk := !hasDoc || userFile.Document
+		addrOk := !hasAddr || userFile.Address
+
+		if docOk && addrOk {
+			// Все требуемые файлы скачаны
+			fullyDownloaded++
+		} else if userFile.Document || userFile.Address {
+			// Хотя бы один тип файлов скачан, но не все
+			partiallyDownloaded++
+		} else {
+			// Запись есть, но файлы не скачаны
+			notDownloaded++
+		}
+	}
+
+	response := map[string]interface{}{
+		"total_users":          totalUsersWithFiles,
+		"fully_downloaded":     fullyDownloaded,
+		"partially_downloaded": partiallyDownloaded,
+		"not_downloaded":       notDownloaded,
+		"remaining":            totalUsersWithFiles - fullyDownloaded,
+		"progress_percent":     0.0,
+	}
+
+	if totalUsersWithFiles > 0 {
+		response["progress_percent"] = float64(fullyDownloaded) / float64(totalUsersWithFiles) * 100
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}

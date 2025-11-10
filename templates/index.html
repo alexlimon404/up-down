@@ -77,6 +77,43 @@
             <h4 class="mb-3">
                 <i class="bi bi-cloud-download"></i> Управление скачиванием
             </h4>
+
+            <!-- Статистика скачивания -->
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body p-2">
+                            <small class="text-muted">Всего пользователей</small>
+                            <h5 class="mb-0" id="stats-total">-</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-success text-white">
+                        <div class="card-body p-2">
+                            <small>Скачано полностью</small>
+                            <h5 class="mb-0" id="stats-downloaded">-</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-warning">
+                        <div class="card-body p-2">
+                            <small>Частично скачано</small>
+                            <h5 class="mb-0" id="stats-partial">-</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-info text-white">
+                        <div class="card-body p-2">
+                            <small>Осталось скачать</small>
+                            <h5 class="mb-0" id="stats-remaining">-</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="row mb-3">
                 <div class="col-md-6">
                     <button id="start-download-btn" class="btn btn-success btn-lg w-100" onclick="startDownload()">

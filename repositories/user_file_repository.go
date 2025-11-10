@@ -55,6 +55,21 @@ func (r *UserFileRepository) GetStats() (total, withDocument, withAddress, withB
 	return
 }
 
+// GetAllAsMap получает все записи в виде map[user_id]*UserFile
+func (r *UserFileRepository) GetAllAsMap() (map[int64]*models.UserFile, error) {
+	var userFiles []models.UserFile
+	err := r.db.Find(&userFiles).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[int64]*models.UserFile, len(userFiles))
+	for i := range userFiles {
+		result[userFiles[i].UserID] = &userFiles[i]
+	}
+	return result, nil
+}
+
 // GetPaginated получает записи с пагинацией
 func (r *UserFileRepository) GetPaginated(page, perPage int) ([]models.UserFile, int64, error) {
 	var userFiles []models.UserFile

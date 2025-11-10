@@ -54,6 +54,7 @@ func main() {
 	http.HandleFunc("/api/download/start", webHandler.StartDownloadHandler)
 	http.HandleFunc("/api/download/stop", webHandler.StopDownloadHandler)
 	http.HandleFunc("/api/download/progress", webHandler.GetProgressHandler)
+	http.HandleFunc("/api/download/stats", webHandler.GetDownloadStatsHandler)
 
 	// Статические файлы
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))

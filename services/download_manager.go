@@ -246,15 +246,35 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 				continue
 			}
 
+			// Проверяем статус уже скачанных файлов
+			existingStatus, err := dm.userFileRepo.GetByUserID(user.ID)
+			documentAlreadyDownloaded := false
+			addressAlreadyDownloaded := false
+
+			if err == nil && existingStatus != nil {
+				documentAlreadyDownloaded = existingStatus.Document
+				addressAlreadyDownloaded = existingStatus.Address
+			}
+
+			// Если оба типа файлов уже скачаны, пропускаем пользователя
+			needDownloadDocument := user.DocumentFiles.Valid && user.DocumentFiles.String != "" && !documentAlreadyDownloaded
+			needDownloadAddress := user.AddressFiles.Valid && user.AddressFiles.String != "" && !addressAlreadyDownloaded
+
+			if !needDownloadDocument && !needDownloadAddress {
+				atomic.AddInt64(&dm.stats.SkippedUsers, 1)
+				log.Printf("[Worker %d] ⏭️  user_id: %d - файлы уже скачаны, пропускаем", id, user.ID)
+				continue
+			}
+
 			// Создаём директорию для пользователя
 			userDir := filepath.Join(dm.downloader.BaseDir, user.CitizenshipID.String, fmt.Sprintf("user_%d", user.ID))
 
 			hasErrors := false
-			documentSuccess := false
-			addressSuccess := false
+			documentSuccess := documentAlreadyDownloaded // Сохраняем предыдущий статус
+			addressSuccess := addressAlreadyDownloaded   // Сохраняем предыдущий статус
 
-			// Скачиваем document_files
-			if user.DocumentFiles.Valid && user.DocumentFiles.String != "" {
+			// Скачиваем document_files только если еще не скачаны
+			if needDownloadDocument {
 				docDir := filepath.Join(userDir, "documents")
 				files, err := dm.downloader.DownloadUploadcareFiles(user.DocumentFiles.String, docDir, "document")
 				if err != nil {
@@ -265,11 +285,14 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 					atomic.AddInt64(&dm.stats.TotalFiles, int64(len(files)))
 					atomic.AddInt64(&dm.stats.SuccessfulFiles, int64(len(files)))
 					documentSuccess = true
+					log.Printf("[Worker %d] 📄 user_id: %d - скачано %d документов", id, user.ID, len(files))
 				}
+			} else if documentAlreadyDownloaded {
+				log.Printf("[Worker %d] ⏭️  user_id: %d - документы уже скачаны ранее", id, user.ID)
 			}
 
-			// Скачиваем address_files
-			if user.AddressFiles.Valid && user.AddressFiles.String != "" {
+			// Скачиваем address_files только если еще не скачаны
+			if needDownloadAddress {
 				addrDir := filepath.Join(userDir, "address")
 				files, err := dm.downloader.DownloadUploadcareFiles(user.AddressFiles.String, addrDir, "address")
 				if err != nil {
@@ -280,7 +303,10 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 					atomic.AddInt64(&dm.stats.TotalFiles, int64(len(files)))
 					atomic.AddInt64(&dm.stats.SuccessfulFiles, int64(len(files)))
 					addressSuccess = true
+					log.Printf("[Worker %d] 🏠 user_id: %d - скачано %d адресных файлов", id, user.ID, len(files))
 				}
+			} else if addressAlreadyDownloaded {
+				log.Printf("[Worker %d] ⏭️  user_id: %d - адресные файлы уже скачаны ранее", id, user.ID)
 			}
 
 			// Записываем статус в базу данных
@@ -295,7 +321,7 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 				log.Printf("[Worker %d] ❌ user_id: %d - скачивание завершено с ошибками", id, user.ID)
 			} else {
 				atomic.AddInt64(&dm.stats.SuccessfulUsers, 1)
-				log.Printf("[Worker %d] ✅ user_id: %d - файлы успешно скачаны (документы: %v, адрес: %v)", id, user.ID, documentSuccess, addressSuccess)
+				log.Printf("[Worker %d] ✅ user_id: %d - обработка завершена успешно (документы: %v, адрес: %v)", id, user.ID, documentSuccess, addressSuccess)
 			}
 		}
 	}

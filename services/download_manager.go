@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -146,11 +148,9 @@ func (dm *DownloadManager) run() {
 	// Канал для пользователей
 	usersChan := make(chan *models.User, dm.cfg.Download.BatchSize)
 
-	// Запускаем воркеры
-	for i := 0; i < dm.cfg.Download.Workers; i++ {
-		dm.wg.Add(1)
-		go dm.worker(i+1, usersChan)
-	}
+	// Запускаем ОДИН воркер (однопоточный режим)
+	dm.wg.Add(1)
+	go dm.worker(1, usersChan)
 
 	// Читаем пользователей из БД
 	err = dm.fetchUsers(usersChan)
@@ -161,7 +161,7 @@ func (dm *DownloadManager) run() {
 	// Закрываем канал пользователей
 	close(usersChan)
 
-	// Ждём завершения всех воркеров
+	// Ждём завершения воркера
 	dm.wg.Wait()
 
 	dm.mutex.Lock()
@@ -185,7 +185,7 @@ func (dm *DownloadManager) fetchUsers(usersChan chan<- *models.User) error {
 		}
 
 		query := `
-			SELECT id, citizenship_id, document_files, address_files
+			SELECT id, citizenship_id, document_files, address_files, phone, email, first_name, last_name, patronymic, document_number
 			FROM users
 			WHERE (document_files IS NOT NULL AND document_files != '')
 			   OR (address_files IS NOT NULL AND address_files != '')
@@ -201,7 +201,7 @@ func (dm *DownloadManager) fetchUsers(usersChan chan<- *models.User) error {
 		count := 0
 		for rows.Next() {
 			user := &models.User{}
-			if err := rows.Scan(&user.ID, &user.CitizenshipID, &user.DocumentFiles, &user.AddressFiles); err != nil {
+			if err := rows.Scan(&user.ID, &user.CitizenshipID, &user.DocumentFiles, &user.AddressFiles, &user.Phone, &user.Email, &user.FirstName, &user.LastName, &user.Patronymic, &user.DocumentNumber); err != nil {
 				log.Printf("Ошибка сканирования пользователя: %v", err)
 				continue
 			}
@@ -226,8 +226,51 @@ func (dm *DownloadManager) fetchUsers(usersChan chan<- *models.User) error {
 	return nil
 }
 
+// createUserInfoFile создает файл info.txt с информацией о пользователе
+func (dm *DownloadManager) createUserInfoFile(userDir string, user *models.User) error {
+	infoFilePath := filepath.Join(userDir, "info.txt")
+
+	phone := "N/A"
+	if user.Phone.Valid && user.Phone.String != "" {
+		phone = user.Phone.String
+	}
+
+	email := "N/A"
+	if user.Email.Valid && user.Email.String != "" {
+		email = user.Email.String
+	}
+
+	firstName := "N/A"
+	if user.FirstName.Valid && user.FirstName.String != "" {
+		firstName = user.FirstName.String
+	}
+
+	lastName := "N/A"
+	if user.LastName.Valid && user.LastName.String != "" {
+		lastName = user.LastName.String
+	}
+
+	patronymic := "N/A"
+	if user.Patronymic.Valid && user.Patronymic.String != "" {
+		patronymic = user.Patronymic.String
+	}
+
+	documentNumber := "N/A"
+	if user.DocumentNumber.Valid && user.DocumentNumber.String != "" {
+		documentNumber = user.DocumentNumber.String
+	}
+
+	content := fmt.Sprintf("phone: %s\nemail: %s\nfirst_name: %s\nlast_name: %s\npatronymic: %s\ndocument_number: %s\n",
+		phone, email, firstName, lastName, patronymic, documentNumber)
+
+	return os.WriteFile(infoFilePath, []byte(content), 0644)
+}
+
 func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 	defer dm.wg.Done()
+
+	// Инициализируем генератор случайных чисел для задержек
+	rand.Seed(time.Now().UnixNano() + int64(id))
 
 	for {
 		select {
@@ -314,6 +357,18 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 				if err := dm.userFileRepo.Upsert(user.ID, documentSuccess, addressSuccess); err != nil {
 					log.Printf("[Worker %d] Ошибка записи статуса для пользователя %d: %v", id, user.ID, err)
 				}
+
+				// Создаём папку пользователя, если её нет
+				if err := os.MkdirAll(userDir, 0755); err != nil {
+					log.Printf("[Worker %d] Ошибка создания директории %s: %v", id, userDir, err)
+				} else {
+					// Создаём файл info.txt с информацией о пользователе
+					if err := dm.createUserInfoFile(userDir, user); err != nil {
+						log.Printf("[Worker %d] Ошибка создания info.txt для пользователя %d: %v", id, user.ID, err)
+					} else {
+						log.Printf("[Worker %d] 📝 user_id: %d - создан файл info.txt", id, user.ID)
+					}
+				}
 			}
 
 			if hasErrors {
@@ -322,6 +377,17 @@ func (dm *DownloadManager) worker(id int, usersChan <-chan *models.User) {
 			} else {
 				atomic.AddInt64(&dm.stats.SuccessfulUsers, 1)
 				log.Printf("[Worker %d] ✅ user_id: %d - обработка завершена успешно (документы: %v, адрес: %v)", id, user.ID, documentSuccess, addressSuccess)
+			}
+
+			// Задержка 3-13 секунд перед следующим пользователем
+			delaySeconds := 3 + rand.Intn(11) // 3 + [0-10] = 3-13 секунд
+			log.Printf("[Worker %d] ⏸️  Пауза %d секунд перед следующим пользователем", id, delaySeconds)
+
+			select {
+			case <-dm.ctx.Done():
+				return
+			case <-time.After(time.Duration(delaySeconds) * time.Second):
+				// Продолжаем после задержки
 			}
 		}
 	}

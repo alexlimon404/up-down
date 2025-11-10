@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"up-down/config"
@@ -209,9 +210,15 @@ func (h *WebHandler) DownloadUserFilesHandler(w http.ResponseWriter, r *http.Req
 	var citizenshipID sql.NullString
 	var documentFiles sql.NullString
 	var addressFiles sql.NullString
+	var phone sql.NullString
+	var email sql.NullString
+	var firstName sql.NullString
+	var lastName sql.NullString
+	var patronymic sql.NullString
+	var documentNumber sql.NullString
 
-	query := `SELECT citizenship_id, document_files, address_files FROM users WHERE id = $1`
-	err = h.db.QueryRow(query, userID).Scan(&citizenshipID, &documentFiles, &addressFiles)
+	query := `SELECT citizenship_id, document_files, address_files, phone, email, first_name, last_name, patronymic, document_number FROM users WHERE id = $1`
+	err = h.db.QueryRow(query, userID).Scan(&citizenshipID, &documentFiles, &addressFiles, &phone, &email, &firstName, &lastName, &patronymic, &documentNumber)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
@@ -276,6 +283,45 @@ func (h *WebHandler) DownloadUserFilesHandler(w http.ResponseWriter, r *http.Req
 	// Сохраняем статус в БД
 	if documentSuccess || addressSuccess {
 		h.userFileRepo.Upsert(userID, documentSuccess, addressSuccess)
+
+		// Создаём файл info.txt с информацией о пользователе
+		phoneStr := "N/A"
+		if phone.Valid && phone.String != "" {
+			phoneStr = phone.String
+		}
+
+		emailStr := "N/A"
+		if email.Valid && email.String != "" {
+			emailStr = email.String
+		}
+
+		firstNameStr := "N/A"
+		if firstName.Valid && firstName.String != "" {
+			firstNameStr = firstName.String
+		}
+
+		lastNameStr := "N/A"
+		if lastName.Valid && lastName.String != "" {
+			lastNameStr = lastName.String
+		}
+
+		patronymicStr := "N/A"
+		if patronymic.Valid && patronymic.String != "" {
+			patronymicStr = patronymic.String
+		}
+
+		documentNumberStr := "N/A"
+		if documentNumber.Valid && documentNumber.String != "" {
+			documentNumberStr = documentNumber.String
+		}
+
+		infoContent := fmt.Sprintf("phone: %s\nemail: %s\nfirst_name: %s\nlast_name: %s\npatronymic: %s\ndocument_number: %s\n",
+			phoneStr, emailStr, firstNameStr, lastNameStr, patronymicStr, documentNumberStr)
+		infoFilePath := userDir + "/info.txt"
+
+		if err := os.WriteFile(infoFilePath, []byte(infoContent), 0644); err != nil {
+			errors = append(errors, fmt.Sprintf("Info file: %v", err))
+		}
 	}
 
 	// Формируем ответ
